@@ -1,0 +1,27 @@
+- name: Bootstrap bucket for Terraform state
+  run: |
+    log () {
+      echo -e "\e[1m==> $*\e[0m"
+    }
+
+    error () {
+      echo -e "\e[31;1m$*\e[0m"
+    }
+
+    if [ ! aws s3api head-bucket --bucket $TERRAFORM_BUCKET >/dev/null 2>&1 ]; then
+      log "Terraform state file S3 bucket ${TERRAFORM_BUCKET} does not exist."
+      log "Creating s3://${TERRAFORM_BUCKET} in ${TERRAFORM_BUCKET_REGION}..."
+      if [ ! aws s3 mb s3://$TERRAFORM_BUCKET --region $TERRAFORM_BUCKET_REGION ]; then
+        error "Error creating s3://${TERRAFORM_BUCKET}. Exiting."
+        exit 1
+      fi
+      log "Enabling versioning for s3://${TERRAFORM_BUCKET}"
+      aws s3api put-bucket-versioning --bucket $TERRAFORM_BUCKET --versioning-configuration Status=Enabled
+    else
+      log "Terraform state file S3 bucket ${TERRAFORM_BUCKET} exists."
+    fi
+- name: Terraform init, plan, apply
+  run: |
+    terraform init -input=false -backend-config="bucket=${TERRAFORM_BUCKET}" -backend-config="key=${TERRAFORM_KEY}" -backend-config="region=${TERRAFORM_BUCKET_REGION}"
+    terraform plan -input=false -var "stage=${STAGE}" -out=terraform.plan
+    terraform apply -auto-approve terraform.plan
